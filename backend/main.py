@@ -109,13 +109,20 @@ def explain(customer: CustomerInput):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 RETENTION_ACTIONS = {
-    "Contract_Month-to-month": "Offer a discount for upgrading to a 1-year or 2-year contract",
-    "tenure_group_new": "Enroll in an early-tenure engagement/check-in program",
-    "PaymentMethod_Electronic check": "Encourage switching to automatic payment with a small incentive",
-    "InternetService_Fiber optic": "Investigate fiber service satisfaction; consider a loyalty discount",
+    "Contract_Month-to-month": "Offer a discount for upgrading to a 1-year or 2-year contract — this is the single strongest retention lever based on this analysis.",
+    "tenure_group_new": "Enroll in an early-tenure engagement program: proactive check-in calls or onboarding support within the first 3 months.",
+    "tenure_group_mid": "Monitor for renewal signals as the initial contract period nears its end; consider a loyalty perk before the 3-year mark.",
+    "PaymentMethod_Electronic check": "Encourage switching to automatic payment (bank transfer or credit card) with a small one-time incentive or fee waiver.",
+    "InternetService_Fiber optic": "Investigate fiber service satisfaction directly (call/survey); consider a service-quality follow-up or loyalty discount.",
+    "OnlineSecurity_No": "Offer a free trial of online security add-on — customers without it show higher churn risk.",
+    "TechSupport_No": "Offer a free trial of tech support add-on — lack of support access correlates with higher churn.",
+    "PaperlessBilling_Yes": "No specific action — paperless billing is a minor factor; focus retention budget on contract/tenure drivers instead.",
+    "SeniorCitizen": "Consider a simplified support channel or personal outreach — senior customers show a higher churn rate despite being a smaller segment.",
+    "MonthlyCharges": "Review pricing tier fit — high monthly charges combined with short contracts is a common churn combination; consider bundling a discount with a contract upgrade rather than a price cut alone."
 }
+
+DEFAULT_RECOMMENDATION = "No single dominant risk factor identified — recommend a general retention check-in call to understand this customer's specific concerns."
 
 @app.post("/retention-strategy")
 def retention_strategy(customer: CustomerInput):
@@ -124,21 +131,39 @@ def retention_strategy(customer: CustomerInput):
         X_processed = preprocessor.transform(df_input)
         
         shap_values = explainer.shap_values(X_processed)
-        top_reasons = get_top_reasons(shap_values[0], feature_names, top_n=1)
+        top_reasons = get_top_reasons(shap_values[0], feature_names, top_n=3)
         
         if len(top_reasons) == 0:
-            return {"recommendation": "No significant churn risk factors identified."}
+            return {
+                "top_drivers": [],
+                "recommendation": "No significant churn risk factors identified for this customer."
+            }
         
-        top_feature = top_reasons.index[0]
-        recommendation = RETENTION_ACTIONS.get(
-            top_feature, 
-            "Review this customer's account for general retention outreach."
-        )
+        recommendations = []
+        top_drivers = []
         
-        return {"top_driver": top_feature, "recommendation": recommendation}
+        for feature_name in top_reasons.index:
+            top_drivers.append(feature_name)
+            action = RETENTION_ACTIONS.get(feature_name)
+            if action is None:
+                for key in RETENTION_ACTIONS:
+                    if key in feature_name or feature_name in key:
+                        action = RETENTION_ACTIONS[key]
+                        break
+            if action and action not in recommendations:
+                recommendations.append(action)
+        
+        final_recommendation = recommendations[0] if recommendations else DEFAULT_RECOMMENDATION
+        
+        return {
+            "top_drivers": top_drivers,
+            "primary_recommendation": final_recommendation,
+            "all_relevant_actions": recommendations
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
+    
 @app.get("/health")
 def health():
     return {"status": "ok", "model": model_config['model_name']}
+
