@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 
-API_URL = "http://localhost:8000"  
+API_URL = "https://customer-churn-predictor-7xys.onrender.com"  
 
 st.set_page_config(page_title="Customer Churn Predictor", layout="centered")
 
