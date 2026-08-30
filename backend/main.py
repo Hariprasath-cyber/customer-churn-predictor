@@ -86,10 +86,20 @@ def predict(customer: CustomerInput):
     
 
 def get_top_reasons(shap_values_row, feature_names, top_n=3):
-    """Same function from Step 9."""
     shap_series = pd.Series(shap_values_row, index=feature_names)
     churn_pushing = shap_series[shap_series > 0].sort_values(ascending=False)
-    return churn_pushing.head(top_n)
+    
+    seen_categories = set()
+    diversified = []
+    for feat, val in churn_pushing.items():
+        base_category = feat.split('_')[0]
+        if base_category not in seen_categories:
+            diversified.append((feat, val))
+            seen_categories.add(base_category)
+        if len(diversified) >= top_n:
+            break
+    
+    return pd.Series(dict(diversified))
 
 @app.post("/explain")
 def explain(customer: CustomerInput):
@@ -130,13 +140,23 @@ def retention_strategy(customer: CustomerInput):
         df_input = prepare_input(customer)
         X_processed = preprocessor.transform(df_input)
         
+        probability = model.predict_proba(X_processed)[0, 1]
+        
+        if probability < OPTIMAL_THRESHOLD:
+            return {
+                "top_drivers": [],
+                "primary_recommendation": "This customer is not currently flagged as at-risk — no retention action needed.",
+                "all_relevant_actions": []
+            }
+        
         shap_values = explainer.shap_values(X_processed)
         top_reasons = get_top_reasons(shap_values[0], feature_names, top_n=3)
         
         if len(top_reasons) == 0:
             return {
                 "top_drivers": [],
-                "recommendation": "No significant churn risk factors identified for this customer."
+                "primary_recommendation": "No significant churn risk factors identified for this customer.",
+                "all_relevant_actions": []
             }
         
         recommendations = []
