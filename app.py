@@ -76,10 +76,10 @@ if st.button("🔮 Predict Churn", type="primary"):
     }
 
     try:
-        with st.spinner("Analyzing customer..."):
-            predict_response = requests.post(f"{API_URL}/predict", json=payload, timeout=10)
-            explain_response = requests.post(f"{API_URL}/explain", json=payload, timeout=10)
-            strategy_response = requests.post(f"{API_URL}/retention-strategy", json=payload, timeout=10)
+        with st.spinner("Waking up the model server — this can take up to a minute if it's been idle..."):
+            predict_response = requests.post(f"{API_URL}/predict", json=payload, timeout=60)
+            explain_response = requests.post(f"{API_URL}/explain", json=payload, timeout=60)
+            strategy_response = requests.post(f"{API_URL}/retention-strategy", json=payload, timeout=60)
 
         if predict_response.status_code == 200:
             pred_data = predict_response.json()
@@ -100,16 +100,13 @@ if st.button("🔮 Predict Churn", type="primary"):
             st.subheader("Recommended Action")
             st.success(strategy_data["primary_recommendation"])
 
-            if len(strategy_data.get("all_relevant_actions", [])) > 1:
-               with st.expander("See other contributing factors"):
-                   for action in strategy_data["all_relevant_actions"][1:]:
-                        st.write(f"• {action}")
-
         else:
             st.error(f"API error: {predict_response.json().get('detail', 'Unknown error')}")
 
+    except requests.exceptions.ReadTimeout:
+        st.warning("⏳ The backend is taking longer than expected to wake up. Please click Predict again in a moment.")
     except requests.exceptions.ConnectionError:
-        st.error("⚠️ Could not connect to the backend. Make sure the FastAPI server is running (`uvicorn backend.main:app --reload --port 8000`).")
+        st.error("⚠️ Could not connect to the backend. It may be temporarily down — please try again shortly.")
+
 else:
     st.info("👆 Fill in the customer details above and click Predict.")
-
